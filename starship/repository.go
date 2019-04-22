@@ -1,10 +1,22 @@
-package repository
+package starship
 
 import (
 	"log"
 
-	"github.com/bvinc/go-sqlite-lite/sqlite3"
+	d "github.com/prytoegrian/swapi/database"
 )
+
+// NewRepo initialises a new starship repository
+func NewRepo(db d.Database) Repository {
+	return Repository{
+		db: db,
+	}
+}
+
+// Repository is a starship repository
+type Repository struct {
+	db d.Database
+}
 
 // Starship represents a well-formed starship
 type Starship struct {
@@ -29,10 +41,11 @@ type Starship struct {
 	URL                  string `json:"url"`
 }
 
-func allStarshipsByPeopleID(db *sqlite3.Conn, id int) []Starship {
+// AllStarshipsByPeopleID get all starships associated to a people
+func (r Repository) AllStarshipsByPeopleID(id int) []Starship {
 	ss := make([]Starship, 0)
 
-	stmt, err := db.Prepare(`SELECT id, name, model, manufacturer, cost_in_credits, length, max_atmosphering_speed, crew, passengers, cargo_capacity, consumables, hyperdrive_rating, mglt, starship_class, created, edited, url
+	stmt, err := r.db.Prepare(`SELECT id, name, model, manufacturer, cost_in_credits, length, max_atmosphering_speed, crew, passengers, cargo_capacity, consumables, hyperdrive_rating, mglt, starship_class, created, edited, url
         FROM people_starships ps
             INNER JOIN starships s ON ps.starships = s.id
         WHERE ps.people = ?`, id)
@@ -57,27 +70,27 @@ func allStarshipsByPeopleID(db *sqlite3.Conn, id int) []Starship {
 	return ss
 }
 
-func buildStarship(stmt *sqlite3.Stmt) Starship {
+func buildStarship(stmt d.Stmt) Starship {
 	// Use Scan to access column data from a row
 	var id int
 	var name string
 	var model string
 	var manufacturer string
-	var cost_in_credits string
+	var costInCredits string
 	var length string
-	var max_atmosphering_speed string
+	var maxAtmospheringSpeed string
 	var crew string
 	var passengers string
-	var cargo_capacity string
+	var cargoCapacity string
 	var consumables string
-	var hyperdrive_rating string
+	var hyperdriveRating string
 	var mglt string
-	var starship_class string
+	var starshipClass string
 	var created string
 	var edited string
 	var url string
 
-	err := stmt.Scan(&id, &name, &model, &manufacturer, &cost_in_credits, &length, &max_atmosphering_speed, &crew, &passengers, &cargo_capacity, &consumables, &hyperdrive_rating, &mglt, &starship_class, &created, &edited, &url)
+	err := stmt.Scan(&id, &name, &model, &manufacturer, &costInCredits, &length, &maxAtmospheringSpeed, &crew, &passengers, &cargoCapacity, &consumables, &hyperdriveRating, &mglt, &starshipClass, &created, &edited, &url)
 	if err != nil {
 		log.Fatal("Scan gave error :" + err.Error())
 	}
@@ -87,16 +100,16 @@ func buildStarship(stmt *sqlite3.Stmt) Starship {
 		Name:                 name,
 		Model:                model,
 		Manufacturer:         manufacturer,
-		CostInCredits:        cost_in_credits,
+		CostInCredits:        costInCredits,
 		Length:               length,
-		MaxAtmospheringSpeed: max_atmosphering_speed,
+		MaxAtmospheringSpeed: maxAtmospheringSpeed,
 		Crew:                 crew,
 		Passengers:           passengers,
-		CargoCapacity:        cargo_capacity,
+		CargoCapacity:        cargoCapacity,
 		Consumables:          consumables,
-		HyperdriveRating:     hyperdrive_rating,
+		HyperdriveRating:     hyperdriveRating,
 		MGLT:                 mglt,
-		StarshipClass:        starship_class,
+		StarshipClass:        starshipClass,
 		Created:              created,
 		Edited:               edited,
 		URL:                  url,

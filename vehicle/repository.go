@@ -1,10 +1,22 @@
-package repository
+package vehicle
 
 import (
 	"log"
 
-	"github.com/bvinc/go-sqlite-lite/sqlite3"
+	d "github.com/prytoegrian/swapi/database"
 )
+
+// NewRepo initialises a new vehicle repository
+func NewRepo(db d.Database) Repository {
+	return Repository{
+		db: db,
+	}
+}
+
+// Repository is a vehicle repository
+type Repository struct {
+	db d.Database
+}
 
 // Vehicle represents a well-formed vehicle
 type Vehicle struct {
@@ -27,10 +39,11 @@ type Vehicle struct {
 	URL                  string `json:"url"`
 }
 
-func allVehiclesByPeopleID(db *sqlite3.Conn, id int) []Vehicle {
+// AllVehiclesByPeopleID get all vehicles associated to a people
+func (r Repository) AllVehiclesByPeopleID(id int) []Vehicle {
 	vs := make([]Vehicle, 0)
 
-	stmt, err := db.Prepare(`SELECT id, name, model, manufacturer, cost_in_credits, length, max_atmosphering_speed, crew, passengers, cargo_capacity, consumables, vehicle_class, created, edited, url
+	stmt, err := r.db.Prepare(`SELECT id, name, model, manufacturer, cost_in_credits, length, max_atmosphering_speed, crew, passengers, cargo_capacity, consumables, vehicle_class, created, edited, url
         FROM people_vehicles pv
             INNER JOIN vehicles v ON pv.vehicles = v.id
         WHERE pv.people = ?`, id)
@@ -56,24 +69,24 @@ func allVehiclesByPeopleID(db *sqlite3.Conn, id int) []Vehicle {
 	return vs
 }
 
-func buildVehicle(s *sqlite3.Stmt) Vehicle {
+func buildVehicle(s d.Stmt) Vehicle {
 	var id int
 	var name string
 	var model string
 	var manufacturer string
-	var cost_in_credits string
+	var costInCredits string
 	var length string
-	var max_atmosphering_speed string
+	var maxAtmospheringSpeed string
 	var crew string
 	var passengers string
-	var cargo_capacity string
+	var cargoCapacity string
 	var consumables string
-	var vehicle_class string
+	var vehicleClass string
 	var created string
 	var edited string
 	var url string
 
-	err := s.Scan(&id, &name, &model, &manufacturer, &cost_in_credits, &length, &max_atmosphering_speed, &crew, &passengers, &cargo_capacity, &consumables, &vehicle_class, &created, &edited, &url)
+	err := s.Scan(&id, &name, &model, &manufacturer, &costInCredits, &length, &maxAtmospheringSpeed, &crew, &passengers, &cargoCapacity, &consumables, &vehicleClass, &created, &edited, &url)
 	if err != nil {
 		log.Fatal("Scan gave error :" + err.Error())
 	}
@@ -83,14 +96,14 @@ func buildVehicle(s *sqlite3.Stmt) Vehicle {
 		Name:                 name,
 		Model:                model,
 		Manufacturer:         manufacturer,
-		CostInCredits:        cost_in_credits,
+		CostInCredits:        costInCredits,
 		Length:               length,
-		MaxAtmospheringSpeed: max_atmosphering_speed,
+		MaxAtmospheringSpeed: maxAtmospheringSpeed,
 		Crew:                 crew,
 		Passengers:           passengers,
-		CargoCapacity:        cargo_capacity,
+		CargoCapacity:        cargoCapacity,
 		Consumables:          consumables,
-		VehicleClass:         vehicle_class,
+		VehicleClass:         vehicleClass,
 		Created:              created,
 		Edited:               edited,
 		URL:                  url,

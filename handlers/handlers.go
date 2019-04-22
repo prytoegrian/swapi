@@ -2,147 +2,194 @@ package handlers
 
 import (
 	"encoding/json"
-	"io"
+	"log"
 	"net/http"
 	"strconv"
 
-	"github.com/bvinc/go-sqlite-lite/sqlite3"
 	"github.com/gorilla/mux"
-	"github.com/prytoegrian/swapi/repository"
+	"github.com/prytoegrian/swapi/people"
 )
 
-func NewHandler(d *sqlite3.Conn) Handler {
+// NewHandler initialise a new handler
+func NewHandler(r people.Repository) Handler {
 	return Handler{
-		db: d,
+		r: r,
 	}
 }
 
+// Handler contains all routes descriptions
 type Handler struct {
-	db *sqlite3.Conn
+	r people.Repository
 }
 
-// AllPeoples fetches all peoples.
+// AllPeoples work on all peoples.
 func (h Handler) AllPeoples(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var m []byte
+
 	switch r.Method {
 	case "GET":
-		m, _ := json.MarshalIndent(repository.AllPeoples(h.db), "", " ")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(m)
+		filled := filledOK(h.r.AllPeoples())
+		m, _ = json.MarshalIndent(filled, "", " ")
 	case "POST":
 		d := json.NewDecoder(r.Body)
-		j := h.postPeople(d)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(j)
+		m = h.postPeople(d)
 	case "OPTIONS":
 		fallthrough
 	default:
 		supported := "GET, POST, OPTIONS"
 		w.Header().Set("Allow", supported)
-		// output json
-		io.WriteString(w, "Supported methods :"+supported)
+		m, _ = json.MarshalIndent(notAllowed(supported), "", " ")
 	}
+
+	w.Write(m)
 }
 
-// @TODO: apply jsend
 func (h Handler) postPeople(d *json.Decoder) []byte {
-	badRequest := map[string]string{"code": "400", "message": "Bad request"}
-	var j map[string]string
-	var p repository.People
+	badRequest := badRequest()
+	var o Output
+	var p people.People
 	err := d.Decode(&p)
 	if err != nil {
 		log.Print(err)
 
-		j = badRequest
+		o = badRequest
 	} else {
-		if err := repository.PostPeople(h.db, p); err != nil {
-			log.Print(err)
-			j = badRequest
+		if id := h.r.PostPeople(p); id == 0 {
+			o = badRequest
 		} else {
-			j = map[string]string{"code": "200", "message": "OK"}
+			o = voidOK()
 		}
 	}
-
-	m, _ := json.Marshal(j)
+	m, _ := json.MarshalIndent(o, "", " ")
 
 	return m
 }
 
-// OnePeople fetches one people.
+// OnePeople work on one people.
 func (h Handler) OnePeople(w http.ResponseWriter, r *http.Request) {
 	qs := mux.Vars(r)
 	id, _ := strconv.Atoi(qs["id"])
+	w.Header().Set("Content-Type", "application/json")
+	var m []byte
 
 	switch r.Method {
 	case "GET":
-		j := h.getPeople(id)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(j)
+		m = h.getPeople(id)
 	case "PUT":
 		d := json.NewDecoder(r.Body)
-		j := h.putPeople(id, d)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(j)
+		m = h.putPeople(id, d)
 	case "DELETE":
-		j := h.deletePeople(id)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(j)
+		m = h.deletePeople(id)
 	case "OPTIONS":
 		fallthrough
 	default:
 		supported := "GET, PUT, DELETE, OPTIONS"
 		w.Header().Set("Allow", supported)
-		// output json
-		io.WriteString(w, "Supported methods :"+supported)
+		m, _ = json.MarshalIndent(notAllowed(supported), "", " ")
 	}
+	w.Write(m)
 }
 
-// @TODO: apply jsend everywhere
 func (h Handler) getPeople(id int) []byte {
-	var m []byte
-	people, err := repository.PeopleByID(h.db, id)
+	var o interface{}
+	people, err := h.r.PeopleByID(id)
 	if err != nil {
-		notFound := map[string]string{"code": "404", "message": "People #" + strconv.Itoa(id) + " not found"}
-		m, _ = json.Marshal(notFound)
+		o = notFound(id)
 	} else {
-		m, _ = json.MarshalIndent(*people, "", " ")
+		o = filledOK(people)
 	}
+	m, _ := json.MarshalIndent(o, "", " ")
 
 	return m
 }
 
-// @TODO: apply jsend
 func (h Handler) putPeople(id int, d *json.Decoder) []byte {
-	badRequest := map[string]string{"code": "400", "message": "Bad request"}
-	var j map[string]string
-	var p repository.People
+	badRequest := badRequest()
+	var o interface{}
+	var p people.People
 	err := d.Decode(&p)
 	if err != nil {
-		j = badRequest
+		o = badRequest
 	} else {
-		if err := repository.PutPeople(h.db, id, p); err != nil {
-			j = badRequest
+		if err := h.r.PutPeople(id, p); err != nil {
+			o = badRequest
 		} else {
-			j = map[string]string{"code": "200", "message": "OK"}
+			o = voidOK()
 		}
 	}
 
-	m, _ := json.Marshal(j)
+	m, _ := json.MarshalIndent(o, "", " ")
 
 	return m
 }
 
 func (h Handler) deletePeople(id int) []byte {
-	notFound := map[string]string{"code": "404", "message": "People #" + strconv.Itoa(id) + " not found"}
-	var j map[string]string
-
-	if err := repository.DeletePeople(h.db, id); err != nil {
-		j = notFound
+	var j interface{}
+	if err := h.r.DeletePeople(id); err != nil {
+		j = notFound(id)
 	} else {
-		j = map[string]string{"code": "200", "message": "OK"}
+		j = voidOK()
 	}
 
-	m, _ := json.Marshal(j)
+	m, _ := json.MarshalIndent(j, "", " ")
 
 	return m
+}
+
+func voidOK() Output {
+	return Output{
+		Code:    200,
+		Status:  "OK",
+		Message: "",
+	}
+}
+
+func filledOK(d interface{}) interface{} {
+	ok := voidOK()
+	filled := struct {
+		Code    int         `json:"code"`
+		Status  string      `json:"status"`
+		Message string      `json:"message"`
+		Data    interface{} `json:"data"`
+	}{
+		Code:    ok.Code,
+		Status:  ok.Status,
+		Message: ok.Message,
+		Data:    d,
+	}
+
+	return filled
+}
+
+func notFound(id int) Output {
+	return Output{
+		Code:    404,
+		Status:  "Fail",
+		Message: "People #" + strconv.Itoa(id) + " not found",
+	}
+}
+
+func badRequest() Output {
+	return Output{
+		Code:    400,
+		Status:  "Fail",
+		Message: "Bad request",
+	}
+}
+
+func notAllowed(s string) Output {
+	return Output{
+		Code:    405,
+		Status:  "Fail",
+		Message: "Supported methode : " + s,
+	}
+}
+
+// Output represents an API output
+type Output struct {
+	Code    int    `json:"code"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
 }

@@ -1,45 +1,61 @@
-package repository
+package people
 
 import (
 	"errors"
 	"log"
 	"time"
 
-	"github.com/bvinc/go-sqlite-lite/sqlite3"
+	d "github.com/prytoegrian/swapi/database"
+	"github.com/prytoegrian/swapi/starship"
+	"github.com/prytoegrian/swapi/vehicle"
 )
+
+// NewRepo initialises a new people repository
+func NewRepo(db d.Database) Repository {
+	return Repository{
+		db: db,
+	}
+}
+
+// Repository is a people repository
+type Repository struct {
+	db d.Database
+}
 
 // People represents a well-formed people
 type People struct {
-	ID        int        `json:"id"`
-	Name      string     `json:"name"`
-	Height    int        `json:"height"`
-	Mass      int        `json:"mass"`
-	Hair      string     `json:"hair"`
-	Skin      string     `json:"skin"`
-	Eye       string     `json:"eye"`
-	BirthYear string     `json:"birth_year"`
-	Gender    string     `json:"gender"`
-	Homeworld int        `json:"homeworld"`
-	Films     string     `json:"films"`
-	Species   string     `json:"species"`
-	Vehicles  []Vehicle  `json:"vehicles"`
-	Starships []Starship `json:"starships"` //?
-	Created   string     `json:"_created"`
-	Edited    string     `json:"_edited"`
-	URL       string     `json:"url"`
+	ID        int                 `json:"id"`
+	Name      string              `json:"name"`
+	Height    int                 `json:"height"`
+	Mass      int                 `json:"mass"`
+	Hair      string              `json:"hair"`
+	Skin      string              `json:"skin"`
+	Eye       string              `json:"eye"`
+	BirthYear string              `json:"birth_year"`
+	Gender    string              `json:"gender"`
+	Homeworld int                 `json:"homeworld"`
+	Films     string              `json:"films"`
+	Species   string              `json:"species"`
+	Vehicles  []vehicle.Vehicle   `json:"vehicles"`
+	Starships []starship.Starship `json:"starships"`
+	Created   string              `json:"_created"`
+	Edited    string              `json:"_edited"`
+	URL       string              `json:"url"`
 }
 
 // AllPeoples fetches all peoples from storage
-func AllPeoples(db *sqlite3.Conn) []People {
+func (r Repository) AllPeoples() []People {
 	peoples := make([]People, 0)
 
-	stmt, err := db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
+	stmt, err := r.db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
         FROM people
         ORDER BY created`)
 	if err != nil {
 		log.Fatal("Malformed SQL :" + err.Error())
 	}
 	defer stmt.Close()
+	v := vehicle.NewRepo(r.db)
+	s := starship.NewRepo(r.db)
 
 	for {
 		hasRow, err := stmt.Step()
@@ -51,8 +67,8 @@ func AllPeoples(db *sqlite3.Conn) []People {
 		}
 
 		p := buildPeople(stmt)
-		p.Vehicles = allVehiclesByPeopleID(db, p.ID)
-		p.Starships = allStarshipsByPeopleID(db, p.ID)
+		p.Vehicles = v.AllVehiclesByPeopleID(p.ID)
+		p.Starships = s.AllStarshipsByPeopleID(p.ID)
 		peoples = append(peoples, p)
 	}
 
@@ -60,20 +76,22 @@ func AllPeoples(db *sqlite3.Conn) []People {
 }
 
 // PostPeople set one people into storage
-func PostPeople(db *sqlite3.Conn, p People) error {
-	l, err := lastPeople(db)
+func (r Repository) PostPeople(p People) int {
+	l, err := r.lastPeople()
+	var futureID int
 	if err != nil {
-		return err
+		futureID = 1
+	} else {
+		futureID = (*l).ID + 1
 	}
-	futureID := (*l).ID + 1
 
 	now := time.Now()
 	date := now.Format(time.RFC3339)
-	stmt, err := db.Prepare(`INSERT INTO people
+	stmt, err := r.db.Prepare(`INSERT INTO people
         (id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return errors.New("Failed to prepare :" + err.Error())
+		log.Fatal("Malformed SQL :" + err.Error())
 	}
 	defer stmt.Close()
 
@@ -94,15 +112,15 @@ func PostPeople(db *sqlite3.Conn, p People) error {
 	)
 
 	if err != nil {
-		return errors.New("Failed to exec SQL :" + err.Error())
+		log.Fatal("Failed to exec SQL :" + err.Error())
 	}
 
-	return nil
+	return futureID
 }
 
 // lastPeople fetches last people from storage
-func lastPeople(db *sqlite3.Conn) (*People, error) {
-	stmt, err := db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
+func (r Repository) lastPeople() (*People, error) {
+	stmt, err := r.db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
         FROM people
         ORDER BY created DESC
         LIMIT 1`)
@@ -120,14 +138,12 @@ func lastPeople(db *sqlite3.Conn) (*People, error) {
 	}
 
 	p := buildPeople(stmt)
-	p.Vehicles = allVehiclesByPeopleID(db, p.ID)
-	p.Starships = allStarshipsByPeopleID(db, p.ID)
 	return &p, nil
 }
 
 // PeopleByID fetches one people from storage
-func PeopleByID(db *sqlite3.Conn, id int) (*People, error) {
-	stmt, err := db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
+func (r Repository) PeopleByID(id int) (*People, error) {
+	stmt, err := r.db.Prepare(`SELECT id, name, height, mass, hair_color, skin_color, eye_color, birth_year, gender, homeworld, created, edited, url
         FROM people
         WHERE id = ?
         ORDER BY created`, id)
@@ -143,22 +159,24 @@ func PeopleByID(db *sqlite3.Conn, id int) (*People, error) {
 	if !hasRow {
 		return nil, errors.New("Unknown id")
 	}
+	v := vehicle.NewRepo(r.db)
+	s := starship.NewRepo(r.db)
 
 	p := buildPeople(stmt)
-	p.Vehicles = allVehiclesByPeopleID(db, p.ID)
-	p.Starships = allStarshipsByPeopleID(db, p.ID)
+	p.Vehicles = v.AllVehiclesByPeopleID(p.ID)
+	p.Starships = s.AllStarshipsByPeopleID(p.ID)
 	return &p, nil
 }
 
 // PutPeople updates a people into storage
-func PutPeople(db *sqlite3.Conn, id int, p People) error {
+func (r Repository) PutPeople(id int, p People) error {
 	now := time.Now()
-	_, err := PeopleByID(db, id)
+	_, err := r.PeopleByID(id)
 	if err != nil {
 		return err
 	}
 
-	stmt, err := db.Prepare(`UPDATE people
+	stmt, err := r.db.Prepare(`UPDATE people
         SET name = ?, height = ?, mass = ?, hair_color = ?, skin_color = ?, eye_color = ?, birth_year = ?, gender = ?, homeworld = ?, edited = ?, url = ?
         WHERE id = ?`)
 	if err != nil {
@@ -188,7 +206,7 @@ func PutPeople(db *sqlite3.Conn, id int, p People) error {
 	return nil
 }
 
-func buildPeople(s *sqlite3.Stmt) People {
+func buildPeople(s d.Stmt) People {
 	var id int
 	var name string
 	var height int
@@ -196,14 +214,14 @@ func buildPeople(s *sqlite3.Stmt) People {
 	var hair string
 	var skin string
 	var eye string
-	var birth_year string
+	var birthYear string
 	var gender string
 	var homeworld int
 	var created string
 	var edited string
 	var url string
 
-	err := s.Scan(&id, &name, &height, &mass, &hair, &skin, &eye, &birth_year, &gender, &homeworld, &created, &edited, &url)
+	err := s.Scan(&id, &name, &height, &mass, &hair, &skin, &eye, &birthYear, &gender, &homeworld, &created, &edited, &url)
 	if err != nil {
 		log.Fatal("Scan gave error :" + err.Error())
 	}
@@ -216,7 +234,7 @@ func buildPeople(s *sqlite3.Stmt) People {
 		Hair:      hair,
 		Skin:      skin,
 		Eye:       eye,
-		BirthYear: birth_year,
+		BirthYear: birthYear,
 		Gender:    gender,
 		Homeworld: homeworld,
 		Created:   created,
@@ -226,13 +244,13 @@ func buildPeople(s *sqlite3.Stmt) People {
 }
 
 // DeletePeople unsets a people from storage
-func DeletePeople(db *sqlite3.Conn, id int) error {
-	_, err := PeopleByID(db, id)
+func (r Repository) DeletePeople(id int) error {
+	_, err := r.PeopleByID(id)
 	if err != nil {
 		return err
 	}
 
-	stmt, err := db.Prepare(`DELETE FROM people WHERE id = ?`)
+	stmt, err := r.db.Prepare(`DELETE FROM people WHERE id = ?`)
 	if err != nil {
 		return errors.New("Failed to prepare :" + err.Error())
 	}
