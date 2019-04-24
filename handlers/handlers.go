@@ -182,7 +182,7 @@ func notAllowed(s string) Output {
 	return Output{
 		Code:    405,
 		Status:  "Fail",
-		Message: "Supported methode : " + s,
+		Message: "Supported methods : " + s,
 	}
 }
 

@@ -12,14 +12,14 @@ import (
 )
 
 func main() {
-	log.Println("hello world")
+	log.Println("Le serveur écoute désormais à http://localhost:8080")
+	log.Println("Pour couper le serveur, tapez simplement Ctrl-C")
 	// flag log each route, operation
 	var debug int
 	flag.IntVar(&debug, "debug", 0, "Enable ou disable full log")
 	flag.Parse()
-	// log.Println(flagvar)
-	db := database.NewDb()
 
+	db := database.NewDb()
 	r := mux.NewRouter()
 	repo := people.NewRepo(db)
 	h := handlers.NewHandler(repo)
@@ -32,5 +32,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-
-// flag
